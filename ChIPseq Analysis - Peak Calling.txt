@@ -1,0 +1,54 @@
+# To check out how many peaks were called in each sample: 
+wc -l *.narrowPeak
+
+# To assess ChiP-seq quality (done in R): 
+https://bioconductor.org/packages/devel/bioc/vignettes/ChIPQC/inst/doc/ChIPQC.pdf
+https://hbctraining.github.io/Intro-to-ChIPseq/lessons/06_combine_chipQC_and_metrics.html 
+
+# Request compute time 
+salloc -N1 -t1:00:00 --ntasks=8
+
+# Load samtools 
+module load samtools
+
+# Create indexed BAM files
+samtools index G1E_input_sorted_rmdup_filtered.bam G1E_input_sorted_rmdup_filtered.bam.bai
+samtools index G1E_CTCF_sorted_rmdup_filtered.bam G1E_CTCF_sorted_rmdup_filtered.bam.bai
+samtools index G1E_ER4_input_sorted_rmdup_filtered.bam G1E_ER4_input_sorted_rmdup_filtered.bam.bai
+samtools index G1E_ER4_CTCF_sorted_rmdup_filtered.bam G1E_ER4_CTCF_sorted_rmdup_filtered.bam.bai
+
+# Create a virtual environment to load deepTools using pip
+pip install deeptools
+
+# Create bigwig files and transfer them to personal computer (also transfer narrowPeak files) to load into IGV for visualization
+bamCoverage -b /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_CTCF_sorted_rmdup_filtered.bam -o G1E_CTCF.bw --normalizeUsing BPM --binSize 20 --extendReads 150 --centerReads
+
+bamCoverage -b /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_ER4_CTCF_sorted_rmdup_filtered.bam -o G1E_ER4_CTCF.bw --normalizeUsing BPM --binSize 20 --extendReads 150 --centerReads
+
+# Load bedtools module
+module load bedtools
+
+# Run bedtools subtract to find out which regions are unique to each sample
+bedtools subtract -a G1E_CTCF_peaks.narrowPeak -b G1E_ER4_CTCF_peaks.narrowPeak -A > unique_G1E_CTCF_peaks.bed
+bedtools subtract -a G1E_ER4_CTCF_peaks.narrowPeak -b G1E_CTCF_peaks.narrowPeak -A > unique_G1E_ER4_CTCF_peaks.bed
+
+# Obtain a .bed file with coordinates with all genes and a .txt file that contains the start and end points of all chromosomes
+
+# Use bedtools flank to create a new flanking interval for each gene in the bed file in order to define promoter regions
+bedtools flank -i mm9_chr19_NCBIgenes.bed -g mm9_chromInfo.txt -s -l 10000 -r 0 > mm9_ch19_promoters.bed
+
+# Change chromosome column from 19 to chr19 in narrowPeak files
+sed 's/^19/chr19/g' G1E_CTCF_peaks.narrowPeak > G1E_CTCF_peaks_19.narrowPeak
+sed 's/^19/chr19/g' G1E_ER4_CTCF_peaks.narrowPeak > G1E_ER4_CTCF_peaks_19.narrowPeak
+
+# Use bedtools intersect to find which peaks overlap with gene promoters
+bedtools intersect -a mm9_ch19_promoters.bed -b G1E_CTCF_peaks_19.narrowPeak > promoters_G1E_CTCF_peaks.bed
+bedtools intersect -a mm9_ch19_promoters.bed -b G1E_ER4_CTCF_peaks_19.narrowPeak > promoters_G1E_ER4_CTCF_peaks.bed
+
+# Extract gene names from bed file 
+awk '{print $4}' promoters_G1E_CTCF_peaks.bed | sort | uniq > G1E_CTCF_genes.txt
+awk '{print $4}' promoters_G1E_ER4_CTCF_peaks.bed | sort | uniq > G1E_ER4_CTCF_genes.txt
+
+
+
+

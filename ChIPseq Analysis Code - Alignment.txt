@@ -1,0 +1,94 @@
+# Copying data to new directory
+cp /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1071/ChIPseq_data/*.fastq /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_data
+
+# Reserve SALLOC
+salloc -N1 -t0:30:00 --ntasks=8
+
+# Load in fastqc module
+module load fastqc
+
+# Run fastqc
+fastqc *.fastq
+
+# Copy html files to personal laptop
+scp lcl_uotmmg3003s1086@teach.scinet.utoronto.ca:/home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_data/*html ./
+
+# Make a new directory to store the mouse reference genome 
+mkdir ChIPseq_mouse_ref
+
+# Retrieve the FASTA file for mouse chromosome 19 from ensembl
+wget http://ftp.ensembl.org/pub/release-96/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.chromosome.19.fa.gz
+
+# Request compute time with salloc
+salloc -N1 -t1:00:00 --ntasks=8
+
+# Load bowtie2
+module load bowtie2
+
+# Create a bowtie2 index for mouse chromosome 19 (documentation can be found at: https://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#the-bowtie2-build-indexer)
+bowtie2-build Mus_musculus.GRCm38.dna.chromosome.19.fa mouse_index_19
+
+# Create a new directory for results, and then a subdirectory for bowtie2 alignments 
+mkdir ChIPseq_results
+cd ChIPseq_results/
+mkdir bowtie2_alignnments
+
+# Run bowtie2 alignment for each fastq file 
+bowtie2 -x /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_mouse_ref/mouse_index_19 -U /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_data/G1E_CTCF_chr19.fastq -S G1E_CTCF
+
+bowtie2 -x /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_mouse_ref/mouse_index_19 -U /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_data/G1E_ER4_CTCF_chr19.fastq  -S G1E_ER4_CTCF
+
+
+bowtie2 -x /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_mouse_ref/mouse_index_19 -U /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_data/G1E_ER4_input_chr19.fastq  -S G1E_ER4_input
+
+bowtie2 -x /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_mouse_ref/mouse_index_19 -U /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_data/G1E_input_chr19.fastq  -S G1E_input
+
+# Load samtools module
+module load samtools
+
+# Sort the SAM file by read coordinate locations and convert to a BAM file
+samtools sort -o G1E_CTCF_sorted.bam G1E_CTCF
+samtools sort -o G1E_ER4_CTCF_sorted.bam G1E_ER4_CTCF
+samtools sort -o G1E_ER4_input_sorted.bam G1E_ER4_input
+samtools sort -o G1E_input_sorted.bam G1E_input
+
+# Make a new subdirectory for removed duplicated reads
+mkdir rmdup
+
+# Run samtools rmdup
+samtools rmdup -s ../G1E_CTCF_sorted.bam G1E_CTCF_sorted_rmdup.bam
+samtools rmdup -s ../G1E_ER4_CTCF_sorted.bam G1E_ER4_CTCF_sorted_rmdup.bam
+samtools rmdup -s ../G1E_ER4_input_sorted.bam G1E_ER4_input_sorted_rmdup.bam
+samtools rmdup -s ../G1E_input_sorted.bam G1E_input_sorted_rmdup.bam
+
+# Filter out multi-mapping reads
+samtools view -b -h -q 42 G1E_CTCF_sorted_rmdup.bam > G1E_CTCF_sorted_rmdup_filtered.bam
+samtools view -b -h -q 42 G1E_ER4_CTCF_sorted_rmdup.bam > G1E_ER4_CTCF_sorted_rmdup_filtered.bam
+samtools view -b -h -q 42 G1E_ER4_input_sorted_rmdup.bam > G1E_ER4_input_sorted_rmdup_filtered.bam
+samtools view -b -h -q 42 G1E_input_sorted_rmdup.bam > G1E_input_sorted_rmdup_filtered.bam
+
+# Make a new subdirectory in the ChIPseq_results directory for macs 
+mkdir macs
+
+# Install macs3 using a virtual environment 
+python3 -m vent MACS3env/
+source MACS3env/bin/activate
+pip install macs3
+
+# run macs3 callpeak to do peak calling 
+macs3 callpeak -t /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_CTCF_sorted_rmdup_filtered.bam \
+-c /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_input_sorted_rmdup_filtered.bam \
+-f BAM \
+-g 1.3e+8 \
+-n G1E_CTCF \
+--outdir ./
+
+macs3 callpeak -t /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_ER4_CTCF_sorted_rmdup_filtered.bam \
+-c /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_ER4_input_sorted_rmdup_filtered.bam \
+-f BAM \
+-g 1.3e+8 \
+-n G1E_ER4_CTCF \
+--outdir ./
+
+
+
