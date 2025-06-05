@@ -48,11 +48,11 @@ bedtools subtract -a sample_name_2.narrowPeak -b sample_name_1.narrowPeak -A > u
 # Use bedtools flank to create a new flanking interval for each gene in the bed file in order to define promoter regions
 bedtools flank -i genes_coordinates.bed -g chromosome_info.txt -s -l 10000 -r 0 > promoters.bed
 
-# Change chromosome column from 19 to chr19 in narrowPeak files
+# Change chromosome column from "19" to chr19 in narrowPeak files (19 is used just in this example, if using all chromosomes then apply this change to all chromosomes)
 sed 's/^19/chr19/g' sample_name.narrowPeak > sample_name_19.narrowPeak
 
 # Use bedtools intersect to find which peaks overlap with gene promoters
-bedtools intersect -a promoters.bed -b sample_name19.narrowPeak > promoters_sample_name_peaks.bed
+bedtools intersect -a promoters.bed -b sample_name_19.narrowPeak > promoters_sample_name_peaks.bed
 
 # Extract gene names from bed file and copy to new file 
 awk '{print $4}' promoters_sample_name_peaks.bed | sort | uniq > sample_name_genes.txt
