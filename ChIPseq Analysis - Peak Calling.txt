@@ -1,53 +1,63 @@
+# Make a new subdirectory in the ChIPseq_results directory for macs 
+mkdir macs
+
+# Install macs3 using a virtual environment 
+python3 -m vent MACS3env/
+source MACS3env/bin/activate
+pip install macs3
+
+# run macs3 callpeak to do peak calling 
+macs3 callpeak -t path_to_BAM_file_name_rmdup_filtered.bam \
+-c /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_input_sorted_rmdup_filtered.bam \
+-f BAM \
+-g 1.3e+8 \
+-n sample_name \
+--outdir path_to_output_directory
+
 # To check out how many peaks were called in each sample: 
 wc -l *.narrowPeak
 
-# To assess ChiP-seq quality (done in R): 
+# To assess ChiP-seq quality (done in R, not included in this repository): 
 https://bioconductor.org/packages/devel/bioc/vignettes/ChIPQC/inst/doc/ChIPQC.pdf
 https://hbctraining.github.io/Intro-to-ChIPseq/lessons/06_combine_chipQC_and_metrics.html 
 
-# Request compute time 
+# Request compute time (if using SciNet cluster)
 salloc -N1 -t1:00:00 --ntasks=8
 
 # Load samtools 
 module load samtools
 
 # Create indexed BAM files
-samtools index G1E_input_sorted_rmdup_filtered.bam G1E_input_sorted_rmdup_filtered.bam.bai
-samtools index G1E_CTCF_sorted_rmdup_filtered.bam G1E_CTCF_sorted_rmdup_filtered.bam.bai
-samtools index G1E_ER4_input_sorted_rmdup_filtered.bam G1E_ER4_input_sorted_rmdup_filtered.bam.bai
-samtools index G1E_ER4_CTCF_sorted_rmdup_filtered.bam G1E_ER4_CTCF_sorted_rmdup_filtered.bam.bai
+samtools index BAM_file_name_rmdup_filtered.bam BAM_file_name_rmdup_filtered.bam.bai
 
 # Create a virtual environment to load deepTools using pip
 pip install deeptools
 
 # Create bigwig files and transfer them to personal computer (also transfer narrowPeak files) to load into IGV for visualization
-bamCoverage -b /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_CTCF_sorted_rmdup_filtered.bam -o G1E_CTCF.bw --normalizeUsing BPM --binSize 20 --extendReads 150 --centerReads
-
-bamCoverage -b /home/l/lcl_uotmmg3003/lcl_uotmmg3003s1086/ChIPseq_results/bowtie2_alignnments/rmdup/G1E_ER4_CTCF_sorted_rmdup_filtered.bam -o G1E_ER4_CTCF.bw --normalizeUsing BPM --binSize 20 --extendReads 150 --centerReads
+bamCoverage -b path_to_rmdup/BAM_file_name_rmdup_filtered.bam -o sample_name.bw --normalizeUsing BPM --binSize 20 --extendReads 150 --centerReads
 
 # Load bedtools module
 module load bedtools
 
-# Run bedtools subtract to find out which regions are unique to each sample
-bedtools subtract -a G1E_CTCF_peaks.narrowPeak -b G1E_ER4_CTCF_peaks.narrowPeak -A > unique_G1E_CTCF_peaks.bed
-bedtools subtract -a G1E_ER4_CTCF_peaks.narrowPeak -b G1E_CTCF_peaks.narrowPeak -A > unique_G1E_ER4_CTCF_peaks.bed
+# Run bedtools subtract to find out which regions are unique to each sample (2 samples in this case)
+bedtools subtract -a sample_name_1.narrowPeak -b sample_name_2.narrowPeak -A > unique_sample_name_1_peaks.bed
+bedtools subtract -a sample_name_2.narrowPeak -b sample_name_1.narrowPeak -A > unique_sample_name_2_peaks.bed
 
-# Obtain a .bed file with coordinates with all genes and a .txt file that contains the start and end points of all chromosomes
+# Obtain a .bed file with coordinates with all genes and a .txt file that contains the start and end points of all chromosomes (can be found on NCBI)
 
 # Use bedtools flank to create a new flanking interval for each gene in the bed file in order to define promoter regions
-bedtools flank -i mm9_chr19_NCBIgenes.bed -g mm9_chromInfo.txt -s -l 10000 -r 0 > mm9_ch19_promoters.bed
+bedtools flank -i genes_coordinates.bed -g chromosome_info.txt -s -l 10000 -r 0 > promoters.bed
 
 # Change chromosome column from 19 to chr19 in narrowPeak files
-sed 's/^19/chr19/g' G1E_CTCF_peaks.narrowPeak > G1E_CTCF_peaks_19.narrowPeak
-sed 's/^19/chr19/g' G1E_ER4_CTCF_peaks.narrowPeak > G1E_ER4_CTCF_peaks_19.narrowPeak
+sed 's/^19/chr19/g' sample_name.narrowPeak > sample_name_19.narrowPeak
 
 # Use bedtools intersect to find which peaks overlap with gene promoters
-bedtools intersect -a mm9_ch19_promoters.bed -b G1E_CTCF_peaks_19.narrowPeak > promoters_G1E_CTCF_peaks.bed
-bedtools intersect -a mm9_ch19_promoters.bed -b G1E_ER4_CTCF_peaks_19.narrowPeak > promoters_G1E_ER4_CTCF_peaks.bed
+bedtools intersect -a promoters.bed -b sample_name19.narrowPeak > promoters_sample_name_peaks.bed
 
-# Extract gene names from bed file 
-awk '{print $4}' promoters_G1E_CTCF_peaks.bed | sort | uniq > G1E_CTCF_genes.txt
-awk '{print $4}' promoters_G1E_ER4_CTCF_peaks.bed | sort | uniq > G1E_ER4_CTCF_genes.txt
+# Extract gene names from bed file and copy to new file 
+awk '{print $4}' promoters_sample_name_peaks.bed | sort | uniq > sample_name_genes.txt
+
+# sample_name_genes.txt file can now be used for further downstream analysis (pathway enrichment, differential analysis, etc...)
 
 
 
